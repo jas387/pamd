@@ -17,3 +17,7 @@ source venv/bin/activate
 ```
 pip install -r requirements.txt
 ```
+# run app
+```
+flet run src
+```

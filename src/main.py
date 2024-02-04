@@ -122,9 +122,7 @@ class AddDownloadDialog(flet.AlertDialog):
     def _analyse(self ,event):
         self.set_title('analysing download')
         self.set_content(flet.Text('wait a second while yt-dlp analyse url...'))
-        # test
-        self.url.current.value = 'https://www.youtube.com/watch?v=nTtdEYRh8WI'
-
+        
         dw = Download(self.url.current.value, logger=self.on_logger)
         #dw.on_logger = self.on_logger
         dw.analyse()

@@ -103,6 +103,8 @@ class Home(flet.UserControl):
 
 class AddDownloadDialog(flet.AlertDialog):
     def __init__(self):
+        self._can_download = False
+        self.download = None
         self.url = flet.Ref[flet.TextField]()
         super().__init__(modal=True)
         self.set_title('add download')
@@ -123,12 +125,13 @@ class AddDownloadDialog(flet.AlertDialog):
         self.set_title('analysing download')
         self.set_content(flet.Text('wait a second while yt-dlp analyse url...'))
         
-        dw = Download(self.url.current.value, logger=self.on_logger)
+        self.download = Download(self.url.current.value, logger=self.on_logger)
         #dw.on_logger = self.on_logger
-        dw.analyse()
+        self.download.analyse()
         self.set_title('download')
-        dw_info = DownloadInfo(dw)
+        dw_info = DownloadInfo(self.download)
         self.set_content(dw_info)
+        self.set_actions(flet.IconButton(icon=flet.icons.DOWNLOAD, on_click=self._start_download))
         self._update()
 
     def on_logger(self, msg):
@@ -149,6 +152,15 @@ class AddDownloadDialog(flet.AlertDialog):
     def set_content(self, *w, **kw):
         self.content=flet.Column(horizontal_alignment=flet.MainAxisAlignment.CENTER,controls=w)
         self._update()
+
+    def set_actions(self, *w):
+        self.actions = w
+        self.actions_alignment = flet.MainAxisAlignment.CENTER
+        self._update()
+
+    def _start_download(self, event):
+        self._can_download = True
+        self.close(None)
 
     def _update(self):
         try:
@@ -181,6 +193,8 @@ class App:
     def _on_click_add_button(self, event):
        dialog = AddDownloadDialog()
        dialog.show(self.page)
+
+
 if __name__ == '__main__':
     app = App(480,640)
     flet.app(app.main)

@@ -2,7 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.ytdl
+*.mp4
+*.part
 # C extensions
 *.so
 

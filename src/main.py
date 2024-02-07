@@ -190,7 +190,7 @@ class App:
             self.page.window_max_height = self.height
             self.page.update()
         # UI
-        self.view=flet.ListView(expand=1)
+        self.view=flet.ListView(expand=True,auto_scroll=True)
         self.home = Home(view=self.view)
         self.page.floating_action_button = flet.FloatingActionButton(
             icon=flet.icons.ADD, on_click=self._on_click_add_button)
@@ -252,14 +252,14 @@ class App:
     def main(self, page: flet.Page):
         self.page = page
         self.page.on_keyboard_event = self._on_keyboard
-        view=flet.ListView(ref=self.view,controls=[
+        self.view=flet.ListView(ref=self.view,controls=[
 
             ])
         page.floating_action_button = flet.FloatingActionButton(ref=self.add_download_button, icon=flet.icons.ADD,on_click=self._show_add_download_dialog)
-        page.add(view)
+        page.add(self.view)
 
     def _show_add_download_dialog(self, e):
-        download = Download(self.page)
+        download = Download(self.page, self.view)
 
     def _on_keyboard(self, e):
         ctrl = e.ctrl
@@ -270,12 +270,15 @@ class App:
                     self._show_add_download_dialog(None)
 
 class Download:
-    def __init__(self, page: flet.Page):
+    def __init__(self, page: flet.Page,view):
+        self.__info = {}
         self.page = page
+        self.view = view
         self._show_analyse_dialog()
     def _show_analyse_dialog(self):
         def on_change_url(e):
             value = e.data
+            print(value)
             if len(value)<=0:
                 e.control.error_hint = 'invalid url!'
                 analyse_button.disabled = True
@@ -287,6 +290,8 @@ class Download:
             #print(dir(yt_dlp))
             text_field.current.disabled = True
             analyse_button.disabled = True
+            text_field.current.update()
+            analyse_button.update()
             is_valid_url = False
             for extractor in yt_dlp.list_extractors():
                 description = extractor.IE_DESC
@@ -316,6 +321,7 @@ class Download:
         self.page.dialog = dialog
         dialog.open = True
         self.page.update()
+
 
     def _show_analysing_dialog(self, url: str):
         # https://www.youtube.com/watch?v=nTtdEYRh8WI
@@ -350,6 +356,7 @@ class Download:
             options = dict({'logger':Logger(),'progress_hooks':[analysing_hook]})
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url,download=False)
+                self.__info = info
                 title = info['title']
                 img = info['thumbnail'] or info['thumbnails'][0]
                 #size = info['total_bytes'] or info['total_bytes_estimate']
@@ -359,13 +366,86 @@ class Download:
                     ])
                 download_button.current.disabled = False
 
+        class LoggerDownload:
+            def debug(self, msg: str):
+                if msg.startswith('[debug] '):
+                    pass
+                else:
+                    self.info(msg)
+            
+            def info(self, msg: str):
+                #print(msg)
+                pass
+
+            def warning(self, msg: str):
+                pass
+
+            def error(self, msg: str):
+                pass
+        
+        def download_hook(d):
+            status = d['status']
+            if status == 'downloading':
+                downloaded = d['_downloaded_bytes_str']
+                total = d['_total_bytes_str']
+                if total.endswith('N/A'):
+                    total=d['_total_bytes_estimate_str']
+                speed = d['_speed_str']
+
+                elapsed_time = d['_elapsed_str']
+                estimated_time = d['_eta_str']
+                percent = d['_percent_str']
+                # UI ajusts
+                '''
+                downloaded_ref.current.value = downloaded
+                total_ref.current.value = total
+                speed_ref.current.value = speed
+                elapsed_time_ref.current.value = elapsed_time
+                estimated_time_ref.current.value = estimated_time
+                '''
+                all_ref.current.value = f'{downloaded}/{total}/{percent} - {speed} - {elapsed_time}/{estimated_time}'
+                progress_ref.current.value = float(percent[:-1])/100
+                all_ref.current.update()
+                progress_ref.current.update()
+                self.page.update()
+
+
+        def start_download(e):
+            info = self.__info
+            title = info['title']
+            img = info['thumbnail'] or info['thumbnails'][0]
+            self.page.close_dialog()
+            self.page.update()
+            row = flet.Row([flet.Image(src=img,width=200,height=200, fit=flet.ImageFit.CONTAIN),
+                flet.Column(height=100,expand=False,controls=[flet.Text(title),
+                    flet.Text(ref=all_ref),
+                    #flet.Row([
+                        #flet.Text(ref=downloaded_ref),flet.Text(ref=total_ref),
+                        #flet.Text(ref=speed_ref),flet.Text(ref=elapsed_time_ref),flet.Text(ref=estimated_time_ref),
+                    #    ])
+                    flet.ProgressBar(ref=progress_ref,width=self.page.width/3)])])
+            self.view.controls.append(row)
+            self.view.update()
+            options = {'logger':LoggerDownload(),'progress_hooks':[download_hook]}
+            with yt_dlp.YoutubeDL(options) as ydl:
+                ydl.download(url)
+                
+        progress_ref = flet.Ref[flet.ProgressBar]()
+        downloaded_ref = flet.Ref[flet.Text]()
+        total_ref = flet.Ref[flet.Text]()
+        speed_ref = flet.Ref[flet.Text]()
+        elapsed_time_ref = flet.Ref[flet.Text]()
+        estimated_time_ref = flet.Ref[flet.Text]()
+        all_ref = flet.Ref[flet.Text]()
+
+
         title_text = flet.Ref[flet.Text]()
         download_button = flet.Ref[flet.IconButton]()
         content_text = flet.Ref[flet.Text]()
         dialog = flet.AlertDialog(modal=False,title=flet.Text(ref=title_text,value='analysing url...', text_align=flet.TextAlign.CENTER),
             content=flet.Text(ref=content_text, value='wait a second...'),
                 actions=[
-                    flet.IconButton(ref=download_button, icon=flet.icons.DOWNLOAD, disabled=True)
+                    flet.IconButton(ref=download_button, icon=flet.icons.DOWNLOAD, disabled=True, on_click=start_download)
                 ], actions_alignment=flet.MainAxisAlignment.CENTER)
         self.page.dialog = dialog
         dialog.open = True

@@ -103,7 +103,7 @@ class Home(flet.UserControl):
         return window
 
 class AddDownloadDialog(flet.AlertDialog):
-    def __init__(self):
+    def __init__(self,url:str=None):
         self._can_download = False
         self.download = None
         self.url = flet.Ref[flet.TextField]()
@@ -115,12 +115,17 @@ class AddDownloadDialog(flet.AlertDialog):
                     flet.Row(alignment=flet.MainAxisAlignment.CENTER,controls=[
                         flet.IconButton(icon=flet.icons.ANALYTICS,tooltip='analyse url',expand=1, on_click=self._analyse)
                         ]))
-
+        self.__url = url
     
     def show(self, page):
         page.dialog = self
         self.open = True
         page.update()
+        if self.__url is not None:
+            self.url.current.value = self.__url
+            self._analyse()
+            
+
 
     def _analyse(self ,event):
         if len(self.url.current.value)<=0:
@@ -194,10 +199,10 @@ class App:
         self.home = Home(view=self.view)
         self.page.floating_action_button = flet.FloatingActionButton(
             icon=flet.icons.ADD, on_click=self._on_click_add_button)
-        self.page.add(self.home)
-
-    def _on_click_add_button(self, event):
-       dialog = AddDownloadDialog()
+        self.page.add(flet.SafeArea(content=self.home,expand=True))
+        
+    def _on_click_add_button(self, event, url: str=None):
+       dialog = AddDownloadDialog(url=url)
        dialog.on_can_start = self.on_can_start
        dialog.show(self.page)
 
@@ -215,7 +220,6 @@ class App:
                 ])
             ])
         
-
         def progress_hooks(entries):
             print('progress_hooks')
             _status = entries['status']
@@ -226,16 +230,17 @@ class App:
                 _filesize = _info['total_bytes'] or _info['total_bytes_estimate']
                 _speed = _info['speed']
                 size.current.value = f'{sizeof_fmt(_filesize_on_disk)}/{sizeof_fmt(_filesize)} - {_speed}'
-                progress.current.value = _filesize_on_disk/_filesize
+                progress.current.value = _filesize_on_disk /_filesize
                 size.current.update()
                 progress.current.update()
+        
         def on_logger(msg):
             print('on_logger:',msg)
 
         alert.download.progress_hooks = progress_hooks
         alert.on_logger = on_logger
 
-        self.view.controls.append(new_dw)
+        self.view.controls.append(flet.SafeArea(content=new_dw,expand=True))
         self.view.update()
 
         alert.download.start()
@@ -243,6 +248,8 @@ class App:
 
 # refactoring code, the old one its too dirty :(
 import re
+import flet
+import concurrent.futures
 class App:
     def __init__(self, width: int=None, height: int=None):
         self.page = None
@@ -256,10 +263,14 @@ class App:
 
             ])
         page.floating_action_button = flet.FloatingActionButton(ref=self.add_download_button, icon=flet.icons.ADD,on_click=self._show_add_download_dialog)
-        page.add(self.view)
+        page.add(flet.SafeArea(content=self.view,expand=True))
+        
 
-    def _show_add_download_dialog(self, e):
-        download = Download(self.page, self.view)
+
+
+    def _show_add_download_dialog(self, e, url:str=None):
+        download = Download(self.page, self.view,url=url)
+        return url
 
     def _on_keyboard(self, e):
         ctrl = e.ctrl
@@ -270,12 +281,12 @@ class App:
                     self._show_add_download_dialog(None)
 
 class Download:
-    def __init__(self, page: flet.Page,view):
+    def __init__(self, page: flet.Page,view,url:str=None):
         self.__info = {}
         self.page = page
         self.view = view
-        self._show_analyse_dialog()
-    def _show_analyse_dialog(self):
+        self._show_analyse_dialog(url=url)
+    def _show_analyse_dialog(self,url: str=None):
         def on_change_url(e):
             value = e.data
             print(value)
@@ -307,7 +318,8 @@ class Download:
                 text_field.current.update()
             else:
                 dialog.open = False
-                self._show_analysing_dialog(text_field.current.value)
+                dummy=url is not None
+                self._show_analysing_dialog(text_field.current.value, dummy=dummy)
             self.page.update()
 
         url_filter = flet.InputFilter(r"^\w{1,5}://.*")
@@ -321,9 +333,13 @@ class Download:
         self.page.dialog = dialog
         dialog.open = True
         self.page.update()
+        if url is not None:
+            text_field.current.value = url
+            text_field.current.update()
+            on_submit_url(None)
+            self.page.update()
 
-
-    def _show_analysing_dialog(self, url: str):
+    def _show_analysing_dialog(self, url: str,dummy:bool=False):
         # https://www.youtube.com/watch?v=nTtdEYRh8WI
         class Logger:
             def debug(self, msg: str):
@@ -365,6 +381,9 @@ class Download:
                     flet.Text(title)
                     ])
                 download_button.current.disabled = False
+                download_button.current.update()
+                if dummy:
+                    start_download(None)
 
         class LoggerDownload:
             def debug(self, msg: str):
@@ -426,9 +445,12 @@ class Download:
                     flet.ProgressBar(ref=progress_ref,width=self.page.width/3)])])
             self.view.controls.append(row)
             self.view.update()
-            options = {'logger':LoggerDownload(),'progress_hooks':[download_hook]}
-            with yt_dlp.YoutubeDL(options) as ydl:
-                ydl.download(url)
+            def download_thread():
+                options = {'logger':LoggerDownload(),'progress_hooks':[download_hook]}
+                with yt_dlp.YoutubeDL(options) as ydl:
+                    ydl.download(url)
+            download_thread()
+
                 
         progress_ref = flet.Ref[flet.ProgressBar]()
         downloaded_ref = flet.Ref[flet.Text]()
